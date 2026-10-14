@@ -61,7 +61,7 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* Desktop Quick Search & Download APK */}
+        {/* Desktop Quick Search */}
         <div className="hidden md:flex md:items-center gap-3">
           <form onSubmit={handleSearchSubmit} className="relative w-56 lg:w-64">
             <input
@@ -73,15 +73,6 @@ export default function Navbar() {
             />
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-brand-muted" />
           </form>
-
-          <a
-            href="/downloads/ANIZEN.apk"
-            download="ANIZEN.apk"
-            className="flex items-center gap-1.5 rounded-full bg-brand-accent px-3.5 py-1.5 text-xs font-bold text-white shadow-glow hover:bg-brand-accent-hover transition-colors"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span>Get APK</span>
-          </a>
         </div>
 
         {/* Mobile Menu Toggle Button */}
