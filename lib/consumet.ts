@@ -1,4 +1,5 @@
 import { META, ANIME } from '@consumet/extensions';
+import { getAnimeById, getAnimeTitle } from '@/lib/anilist';
 
 export interface ConsumetEpisode {
   id: string;
@@ -49,8 +50,10 @@ function getHianimeProvider() {
 
 /**
  * Fetch episode list for a given AniList ID using Consumet META.Anilist
+ * with fallback title search via HiAnime
  */
 export async function getConsumetEpisodes(anilistId: string): Promise<ConsumetEpisode[]> {
+  // 1. First attempt: Consumet META.Anilist by AniList ID
   try {
     const provider = getAnilistProvider();
     const info = await provider.fetchAnimeInfo(anilistId);
@@ -68,10 +71,44 @@ export async function getConsumetEpisodes(anilistId: string): Promise<ConsumetEp
     console.warn(`[Consumet] Fetch info failed for AniList ID ${anilistId}:`, err?.message || err);
   }
 
-  // Secondary fallback: search HiAnime directly
+  // 2. Secondary fallback: resolve title from AniList and search HiAnime
+  try {
+    const parsedId = parseInt(anilistId, 10);
+    if (!isNaN(parsedId)) {
+      const animeMedia = await getAnimeById(parsedId);
+      if (animeMedia) {
+        const title = getAnimeTitle(animeMedia);
+        const hianime = getHianimeProvider();
+        const searchRes = await hianime.search(title);
+        if (searchRes.results && searchRes.results.length > 0) {
+          const first = searchRes.results[0];
+          const info = await hianime.fetchAnimeInfo(first.id);
+          if (info && Array.isArray(info.episodes) && info.episodes.length > 0) {
+            return info.episodes.map((ep: any) => ({
+              id: String(ep.id),
+              number: Number(ep.number || 1),
+              title: ep.title || `Episode ${ep.number}`,
+              image: ep.image,
+              url: ep.url,
+            }));
+          }
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[Consumet] Title search fallback failed for AniList ID ${anilistId}:`, err?.message || err);
+  }
+
+  return [];
+}
+
+/**
+ * Convenience wrapper to search Consumet directly by anime title
+ */
+export async function getConsumetEpisodesByTitle(title: string): Promise<ConsumetEpisode[]> {
   try {
     const hianime = getHianimeProvider();
-    const searchRes = await hianime.search(anilistId);
+    const searchRes = await hianime.search(title);
     if (searchRes.results && searchRes.results.length > 0) {
       const first = searchRes.results[0];
       const info = await hianime.fetchAnimeInfo(first.id);
@@ -86,9 +123,8 @@ export async function getConsumetEpisodes(anilistId: string): Promise<ConsumetEp
       }
     }
   } catch (err: any) {
-    console.warn(`[Consumet] HiAnime fallback failed for AniList ID ${anilistId}:`, err?.message || err);
+    console.warn(`[Consumet] Search failed for title "${title}":`, err?.message || err);
   }
-
   return [];
 }
 
