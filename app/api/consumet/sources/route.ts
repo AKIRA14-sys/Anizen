@@ -1,27 +1,86 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getConsumetSources } from '@/lib/consumet';
+import { NextRequest, NextResponse } from "next/server";
+import { getConsumetSources } from "@/lib/consumet";
+
+export const runtime = "nodejs";
+
+const ALLOWED_PROVIDERS = new Set([
+  "hianime",
+  "animepahe",
+  "animekai",
+  "kickassanime",
+]);
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const episodeId = searchParams.get('episodeId');
 
-  if (!episodeId) {
-    return NextResponse.json({ error: 'Missing episodeId parameter' }, { status: 400 });
+  const episodeId = searchParams.get("episodeId")?.trim();
+  const providerName = searchParams.get("provider")?.trim();
+
+  if (!episodeId || !providerName) {
+    return NextResponse.json(
+      {
+        success: false,
+        sources: [],
+        error: "episodeId and provider are required",
+      },
+      { status: 400 }
+    );
+  }
+
+  if (!ALLOWED_PROVIDERS.has(providerName)) {
+    return NextResponse.json(
+      {
+        success: false,
+        sources: [],
+        error: "Unsupported Consumet provider",
+      },
+      { status: 400 }
+    );
   }
 
   try {
-    const data = await getConsumetSources(episodeId);
+    const data = await getConsumetSources(
+      episodeId,
+      providerName
+    );
+
     if (!data) {
-      return NextResponse.json({ success: false, sources: [], message: 'No sources found' }, { status: 404 });
+      return NextResponse.json(
+        {
+          success: false,
+          sources: [],
+          subtitles: [],
+          message: "No streaming sources are available",
+        },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json({ success: true, ...data }, {
-      headers: {
-        'Cache-Control': 'public, max-age=3600, s-maxage=7200, stale-while-revalidate=86400',
+    return NextResponse.json(
+      {
+        success: true,
+        ...data,
       },
-    });
-  } catch (error: any) {
-    console.error(`Error in /api/consumet/sources for episodeId ${episodeId}:`, error);
-    return NextResponse.json({ success: false, sources: [], error: error.message }, { status: 500 });
+      {
+        headers: {
+          "Cache-Control":
+            "public, max-age=300, s-maxage=600, stale-while-revalidate=1800",
+        },
+      }
+    );
+  } catch (error) {
+    console.error(
+      `[Consumet] Source lookup failed for ${providerName}:`,
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        sources: [],
+        error: "Unable to retrieve streaming sources",
+      },
+      { status: 502 }
+    );
   }
 }
