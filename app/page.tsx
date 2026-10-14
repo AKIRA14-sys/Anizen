@@ -1,4 +1,6 @@
 import HeroCarousel from '@/components/HeroCarousel';
+import AppDownloadBanner from '@/components/AppDownloadBanner';
+import ContinueWatchingRail from '@/components/ContinueWatchingRail';
 import AnimeRail from '@/components/AnimeRail';
 import GenreSection from '@/components/GenreSection';
 import { AnimeMedia } from '@/types/anime';
@@ -50,6 +52,12 @@ export default async function HomePage() {
           </div>
         </div>
       ) : null}
+
+      {/* App Download Banner */}
+      <AppDownloadBanner />
+
+      {/* Continue Watching Rail */}
+      <ContinueWatchingRail />
 
       {/* Discovery Sections */}
       <main className="flex-1 space-y-2 pb-12">

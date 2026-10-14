@@ -75,3 +75,14 @@ export interface WatchlistItem {
   seasonYear?: number;
   addedAt: number;
 }
+
+export interface WatchProgressItem {
+  animeId: number;
+  animeTitle: string;
+  coverImage: string;
+  bannerImage?: string;
+  episodeNumber: number;
+  totalEpisodes?: number;
+  updatedAt: number;
+  watchedEpisodes: number[];
+}
