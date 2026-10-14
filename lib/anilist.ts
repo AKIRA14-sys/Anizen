@@ -144,6 +144,39 @@ export async function getTopRatedAnime(page = 1, perPage = 12): Promise<AnimeMed
   return data.Page.media;
 }
 
+// Get Airing Schedule
+export async function getAiringSchedule(): Promise<any[]> {
+  const now = Math.floor(Date.now() / 1000);
+  const weekLater = now + 7 * 24 * 3600;
+
+  const query = `
+    query ($airingAt_greater: Int, $airingAt_lesser: Int) {
+      Page(page: 1, perPage: 24) {
+        airingSchedules(airingAt_greater: $airingAt_greater, airingAt_lesser: $airingAt_lesser, sort: TIME) {
+          id
+          airingAt
+          timeUntilAiring
+          episode
+          media {
+            ${MEDIA_FIELDS}
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const data = await fetchGraphQL<{ Page: { airingSchedules: any[] } }>(query, {
+      airingAt_greater: now,
+      airingAt_lesser: weekLater,
+    });
+    return data.Page.airingSchedules || [];
+  } catch (e) {
+    console.error('Failed to fetch airing schedule:', e);
+    return [];
+  }
+}
+
 // Search and Filter Anime
 export async function searchAnime(
   searchQuery?: string,

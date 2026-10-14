@@ -50,45 +50,27 @@ export default function AppDownloadBanner() {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-lg font-extrabold text-white sm:text-xl">
-                  Get ANIZEN Mobile App
+                  ANIZEN Web App Experience
                 </h3>
-                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-extrabold text-emerald-400 flex items-center gap-1">
-                  <ShieldCheck className="h-3 w-3" /> Safe APK
+                <span className="rounded-full bg-brand-accent/20 border border-brand-accent/40 px-2 py-0.5 text-[10px] font-extrabold text-brand-accent flex items-center gap-1">
+                  <ShieldCheck className="h-3 w-3" /> Fast & Ad-Free
                 </span>
               </div>
               <p className="mt-1 text-xs text-brand-muted max-w-md leading-relaxed">
-                Download the official ANIZEN Android APK or install the instant Progressive Web App (PWA) for native full-screen streaming.
+                Install ANIZEN as a Progressive Web App (PWA) on iOS & Android for instant full-screen access and offline caching.
               </p>
-              <div className="mt-2 flex items-center gap-3 text-[11px] text-brand-muted font-medium">
-                <span>Version: v1.0.0</span>
-                <span>•</span>
-                <span>Size: 14.2 MB</span>
-                <span>•</span>
-                <span>Android 8.0+</span>
-              </div>
             </div>
           </div>
 
           {/* Right Action Buttons */}
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            {/* Direct APK Download Button */}
-            <a
-              href="/downloads/ANIZEN.apk"
-              download="ANIZEN.apk"
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 rounded-xl bg-brand-accent px-5 py-3 text-xs font-bold text-white shadow-glow hover:bg-brand-accent-hover transition-all"
-            >
-              <Download className="h-4 w-4" />
-              <span>Download Android APK</span>
-            </a>
-
-            {/* PWA Install Button */}
             {deferredPrompt && !isInstalled && (
               <button
                 onClick={handlePWAInstall}
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-surface px-5 py-3 text-xs font-bold text-white hover:border-brand-accent hover:text-brand-accent transition-all"
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 rounded-xl bg-brand-accent px-5 py-3 text-xs font-bold text-white shadow-glow hover:bg-brand-accent-hover transition-all"
               >
-                <Sparkles className="h-4 w-4 text-brand-accent" />
-                <span>Install Web App (PWA)</span>
+                <Sparkles className="h-4 w-4 text-white" />
+                <span>Install Web App</span>
               </button>
             )}
 

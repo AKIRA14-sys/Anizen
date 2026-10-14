@@ -35,15 +35,6 @@ export default function BottomNav() {
           );
         })}
 
-        {/* APK Download Link */}
-        <a
-          href="/downloads/ANIZEN.apk"
-          download="ANIZEN.apk"
-          className="flex flex-col items-center justify-center gap-1 px-3 py-1 text-[11px] font-bold text-amber-400 hover:text-amber-300 transition-colors"
-        >
-          <Download className="h-5 w-5 stroke-[2.5]" />
-          <span>APK</span>
-        </a>
       </div>
     </nav>
   );

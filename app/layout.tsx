@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import BottomNav from '@/components/BottomNav';
 
 export const metadata: Metadata = {
   title: 'ANIZEN - Modern Anime Discovery & Streaming',
@@ -22,8 +23,9 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="flex min-h-screen flex-col bg-brand-dark text-brand-text antialiased selection:bg-brand-accent selection:text-white">
         <Navbar />
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 pb-16 md:pb-0">{children}</main>
         <Footer />
+        <BottomNav />
       </body>
     </html>
   );
