@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://anizen.vercel.app/sitemap.xml
