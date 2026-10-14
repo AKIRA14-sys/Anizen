@@ -17,65 +17,53 @@ export interface ConsumetSource {
 export interface ConsumetSourcesResult {
   headers?: Record<string, string>;
   sources: ConsumetSource[];
-  subtitles?: {
+  subtitles: Array<{
     url: string;
     lang: string;
-  }[];
+  }>;
   download?: string;
   provider: string;
 }
 
-interface ConsumetProvider {
+interface ProviderInstance {
   name: string;
   instance: any;
 }
 
-/**
- * Initialize providers independently.
- * If one provider is unavailable in the installed package version,
- * the other providers can still be used.
- */
-function createProviders(): ConsumetProvider[] {
-  const providers: ConsumetProvider[] = [];
+function createProviders(): ProviderInstance[] {
+  const providers: ProviderInstance[] = [];
 
-  const providerConstructors: {
+  const constructors: Array<{
     name: string;
-    constructor: new () => any;
-  }[] = [
+    create: () => any;
+  }> = [
     {
       name: "hianime",
-      constructor: ANIME.Hianime,
+      create: () => new ANIME.Hianime(),
     },
     {
       name: "animepahe",
-      constructor: ANIME.AnimePahe,
+      create: () => new ANIME.AnimePahe(),
     },
     {
       name: "animekai",
-      constructor: ANIME.Animekai,
+      create: () => new ANIME.Animekai(),
     },
     {
       name: "kickassanime",
-      constructor: ANIME.Kickassanime,
+      create: () => new ANIME.Kickassanime(),
     },
   ];
 
-  for (const provider of providerConstructors) {
+  for (const item of constructors) {
     try {
-      if (typeof provider.constructor !== "function") {
-        console.warn(
-          `[Consumet] Provider "${provider.name}" is unavailable.`
-        );
-        continue;
-      }
-
       providers.push({
-        name: provider.name,
-        instance: new provider.constructor(),
+        name: item.name,
+        instance: item.create(),
       });
     } catch (error) {
       console.warn(
-        `[Consumet] Could not initialize "${provider.name}":`,
+        `[Consumet] Failed to initialize ${item.name}:`,
         error
       );
     }
@@ -87,8 +75,7 @@ function createProviders(): ConsumetProvider[] {
 const PROVIDERS = createProviders();
 
 /**
- * Search providers for an anime and return its episode list.
- * Providers are tried in order until one returns usable results.
+ * Search Consumet by anime title.
  */
 export async function getConsumetEpisodesByTitle(
   title: string
@@ -112,7 +99,6 @@ export async function getConsumetEpisodesByTitle(
         continue;
       }
 
-      // Try search results until one provides usable episode information.
       for (const result of results.slice(0, 5)) {
         if (!result?.id) {
           continue;
@@ -122,7 +108,7 @@ export async function getConsumetEpisodesByTitle(
           const info = await instance.fetchAnimeInfo(result.id);
           const rawEpisodes = info?.episodes;
 
-          if (!Array.isArray(rawEpisodes) || rawEpisodes.length === 0) {
+          if (!Array.isArray(rawEpisodes)) {
             continue;
           }
 
@@ -138,7 +124,8 @@ export async function getConsumetEpisodesByTitle(
                     ? parsedNumber
                     : index + 1,
                 title:
-                  typeof episode.title === "string" && episode.title.trim()
+                  typeof episode.title === "string" &&
+                  episode.title.trim()
                     ? episode.title
                     : `Episode ${index + 1}`,
                 image:
@@ -149,29 +136,25 @@ export async function getConsumetEpisodesByTitle(
               };
             });
 
-          if (episodes.length === 0) {
-            continue;
+          if (episodes.length > 0) {
+            return {
+              animeId: String(result.id),
+              provider: name,
+              episodes,
+            };
           }
-
-          return {
-            animeId: String(result.id),
-            provider: name,
-            episodes,
-          };
         } catch (error) {
           console.warn(
-            `[Consumet] Failed to load anime information from "${name}":`,
+            `[Consumet] Failed to load episodes from ${name}:`,
             error
           );
         }
       }
     } catch (error) {
       console.warn(
-        `[Consumet] Search failed for "${normalizedTitle}" on "${name}":`,
+        `[Consumet] Search failed on ${name} for "${normalizedTitle}":`,
         error
       );
-
-      // Continue to the next provider.
     }
   }
 
@@ -179,11 +162,21 @@ export async function getConsumetEpisodesByTitle(
 }
 
 /**
- * Fetch streaming sources for an episode from its original provider.
- *
- * IMPORTANT:
- * Pass the exact episode ID returned by getConsumetEpisodesByTitle()
- * and the matching provider name.
+ * Compatibility helper.
+ * Its argument must be an anime TITLE, not an AniList ID.
+ */
+export async function getConsumetEpisodes(
+  title: string
+): Promise<{
+  animeId: string;
+  provider: string;
+  episodes: ConsumetEpisode[];
+} | null> {
+  return getConsumetEpisodesByTitle(title);
+}
+
+/**
+ * Fetch sources using the exact episode ID and its provider.
  */
 export async function getConsumetSources(
   episodeId: string,
@@ -198,28 +191,25 @@ export async function getConsumetSources(
   );
 
   if (!provider) {
-    console.warn(
-      `[Consumet] Provider "${providerName}" is unavailable.`
-    );
-
     return null;
   }
 
   try {
-    const response = await provider.instance.fetchEpisodeSources(episodeId);
+    const response = await provider.instance.fetchEpisodeSources(
+      episodeId
+    );
 
     if (!response) {
       return null;
     }
 
-    const rawSources = Array.isArray(response.sources)
-      ? response.sources
-      : [];
-
-    const sources: ConsumetSource[] = rawSources
+    const sources: ConsumetSource[] = (
+      Array.isArray(response.sources) ? response.sources : []
+    )
       .filter(
         (source: any) =>
-          typeof source?.url === "string" && source.url.trim().length > 0
+          typeof source?.url === "string" &&
+          source.url.trim().length > 0
       )
       .map((source: any) => ({
         url: source.url,
@@ -232,21 +222,21 @@ export async function getConsumetSources(
             : "auto",
       }));
 
-    const subtitles = Array.isArray(response.subtitles)
-      ? response.subtitles
-          .filter(
-            (subtitle: any) =>
-              typeof subtitle?.url === "string" &&
-              subtitle.url.trim().length > 0
-          )
-          .map((subtitle: any) => ({
-            url: subtitle.url,
-            lang:
-              subtitle.lang ||
-              subtitle.language ||
-              "Unknown",
-          }))
-      : [];
+    const subtitles = (
+      Array.isArray(response.subtitles) ? response.subtitles : []
+    )
+      .filter(
+        (subtitle: any) =>
+          typeof subtitle?.url === "string" &&
+          subtitle.url.trim().length > 0
+      )
+      .map((subtitle: any) => ({
+        url: subtitle.url,
+        lang:
+          subtitle.lang ||
+          subtitle.language ||
+          "Unknown",
+      }));
 
     const download =
       typeof response.download === "string"
@@ -254,10 +244,6 @@ export async function getConsumetSources(
         : undefined;
 
     if (sources.length === 0 && !download) {
-      console.warn(
-        `[Consumet] No playable sources returned by "${providerName}".`
-      );
-
       return null;
     }
 
@@ -277,7 +263,7 @@ export async function getConsumetSources(
     };
   } catch (error) {
     console.warn(
-      `[Consumet] Failed to fetch episode sources from "${providerName}":`,
+      `[Consumet] Failed to fetch sources from ${providerName}:`,
       error
     );
 
