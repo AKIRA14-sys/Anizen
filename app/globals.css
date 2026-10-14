@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0c;
+  --foreground: #f3f4f6;
+  --accent: #ff6b00;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0c;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #232630;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #ff6b00;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Gradient Mask Utilities */
+.hero-gradient {
+  background: linear-gradient(0deg, #0a0a0c 0%, rgba(10, 10, 12, 0.8) 40%, rgba(10, 10, 12, 0.3) 100%);
+}
+
+.hero-gradient-side {
+  background: linear-gradient(90deg, #0a0a0c 0%, rgba(10, 10, 12, 0.7) 50%, rgba(10, 10, 12, 0.1) 100%);
+}
