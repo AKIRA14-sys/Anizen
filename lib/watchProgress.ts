@@ -42,6 +42,8 @@ export function updateWatchProgress(data: {
   bannerImage?: string;
   lastWatchedEpisode: number;
   totalEpisodes?: number;
+  currentTime?: number;
+  duration?: number;
 }): WatchProgressItem {
   const map = getWatchProgressMap();
   const existing = map[data.animeId];
@@ -99,4 +101,14 @@ export function removeContinueWatching(animeId: number): WatchProgressItem[] {
   delete map[animeId];
   saveWatchProgressMap(map);
   return getContinueWatchingList();
+}
+
+export function clearWatchHistory(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(WATCH_PROGRESS_KEY);
+    window.dispatchEvent(new Event('anizen_watch_progress_updated'));
+  } catch (e) {
+    console.error('Error clearing watch history:', e);
+  }
 }

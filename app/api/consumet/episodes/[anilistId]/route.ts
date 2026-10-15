@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getConsumetEpisodesResult } from '@/lib/consumet';
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { anilistId: string } }
 ) {
   const { anilistId } = params;

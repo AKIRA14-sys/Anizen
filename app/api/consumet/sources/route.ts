@@ -1,14 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getConsumetSources } from "@/lib/consumet";
-
-export const runtime = "nodejs";
-
-const ALLOWED_PROVIDERS = new Set([
-  "hianime",
-  "animepahe",
-  "animekai",
-  "kickassanime",
-]);
+import { NextRequest, NextResponse } from 'next/server';
+import { getConsumetSources } from '@/lib/consumet';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
