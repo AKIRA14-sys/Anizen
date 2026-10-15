@@ -45,7 +45,6 @@ async function getAniListTitle(
   }
 
   const data = await response.json();
-
   const title = data?.data?.Media?.title;
 
   return (
@@ -64,7 +63,11 @@ export async function GET(
 
   if (!anilistId || !/^\d+$/.test(anilistId)) {
     return NextResponse.json(
-      { success: false, episodes: [], error: "Invalid AniList ID" },
+      {
+        success: false,
+        episodes: [],
+        error: "Invalid AniList ID",
+      },
       { status: 400 }
     );
   }
