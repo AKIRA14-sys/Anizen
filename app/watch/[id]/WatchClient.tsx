@@ -14,18 +14,12 @@ import {
   Tv,
   Download,
   Server,
-  Play,
-  Pause,
-  Volume2,
-  VolumeX,
-  Maximize,
-  Settings,
   CheckCircle2,
 } from 'lucide-react';
 import { AnimeMedia, AniweebEpisodesResponse } from '@/types/anime';
 import { getAnimeById, getAnimeTitle } from '@/lib/anilist';
 import { getEpisodes, getEmbedUrl } from '@/lib/aniweeb';
-import { updateWatchProgress, getAnimeWatchProgress } from '@/lib/watchProgress';
+import { updateWatchProgress } from '@/lib/watchProgress';
 
 interface ConsumetSourceItem {
   url: string;
@@ -40,6 +34,7 @@ interface ConsumetSubtitleItem {
 }
 
 interface ConsumetSourcesData {
+  provider: string;
   headers?: Record<string, string>;
   sources: ConsumetSourceItem[];
   subtitles?: ConsumetSubtitleItem[];
@@ -62,6 +57,7 @@ function WatchClientContent({ id }: WatchClientProps) {
 
   // Episodes state
   const [consumetEpisodes, setConsumetEpisodes] = useState<any[]>([]);
+  const [consumetErrors, setConsumetErrors] = useState<any[]>([]);
   const [aniweebEpisodes, setAniweebEpisodes] = useState<AniweebEpisodesResponse | null>(null);
 
   // Consumet sources state
@@ -71,17 +67,31 @@ function WatchClientContent({ id }: WatchClientProps) {
 
   // Player controls
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
-  const [showSettings, setShowSettings] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [sourcesLoading, setSourcesLoading] = useState(false);
+  const [consumetErrorMsg, setConsumetErrorMsg] = useState<string | null>(null);
   const [embedError, setEmbedError] = useState(false);
 
-  // Load Anime metadata and episode list
+  // Request counter guard to prevent stale async responses
+  const activeReqIdRef = useRef(0);
+
+  // Helper to destroy HLS instance and reset HTML5 video
+  const cleanupVideoPlayer = () => {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.removeAttribute('src');
+      videoRef.current.load();
+    }
+  };
+
+  // Initial load for Anime metadata and Aniweeb episodes
   useEffect(() => {
     if (isNaN(animeId)) return;
 
@@ -102,29 +112,113 @@ function WatchClientContent({ id }: WatchClientProps) {
       } finally {
         setLoading(false);
       }
+    }
 
-      // Try fetching Consumet episodes list in background
+    loadWatchData();
+  }, [animeId]);
+
+  // Handle server selection changes cleanly
+  const handleServerSelect = (server: 'consumet' | 'aniweeb') => {
+    setActiveServer(server);
+    if (server === 'aniweeb') {
+      cleanupVideoPlayer();
+      setConsumetErrorMsg(null);
+      setConsumetData(null);
+      setSelectedQualityUrl('');
+    }
+  };
+
+  // Load Consumet episode list when activeServer is 'consumet'
+  useEffect(() => {
+    if (isNaN(animeId) || activeServer !== 'consumet') return;
+
+    async function fetchConsumetEpisodes() {
       try {
         const res = await fetch(`/api/consumet/episodes/${animeId}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && Array.isArray(json.episodes) && json.episodes.length > 0) {
-            setConsumetEpisodes(json.episodes);
-          }
+        const json = await res.json();
+        if (res.ok && json.success && Array.isArray(json.episodes)) {
+          setConsumetEpisodes(json.episodes);
+          setConsumetErrors([]);
+        } else {
+          setConsumetEpisodes([]);
+          setConsumetErrors(json.errors || []);
         }
       } catch (e) {
         console.warn('Failed to fetch Consumet episode list:', e);
       }
     }
 
-    loadWatchData();
-  }, [animeId]);
+    fetchConsumetEpisodes();
+  }, [animeId, activeServer]);
 
-  // Attach HLS stream to video element when selectedQualityUrl changes
+  // Load Consumet episode sources when activeServer is 'consumet', episode, or track changes
   useEffect(() => {
-    if (!selectedQualityUrl || !videoRef.current) return;
+    if (isNaN(animeId) || activeServer !== 'consumet') return;
+
+    const currentReqId = ++activeReqIdRef.current;
+
+    async function fetchSources() {
+      setSourcesLoading(true);
+      setConsumetErrorMsg(null);
+      setConsumetData(null);
+      setSelectedQualityUrl('');
+      cleanupVideoPlayer();
+
+      let matchedEpId = '';
+      let matchedProvider = 'anilist';
+
+      if (consumetEpisodes.length > 0) {
+        const found = consumetEpisodes.find((e) => e.number === episodeNumber);
+        if (found) {
+          matchedEpId = found.id;
+          matchedProvider = found.provider || 'anilist';
+        }
+      }
+
+      if (!matchedEpId) {
+        matchedEpId = `${animeId}-ep-${episodeNumber}`;
+      }
+
+      try {
+        const res = await fetch(
+          `/api/consumet/sources?episodeId=${encodeURIComponent(matchedEpId)}&provider=${encodeURIComponent(matchedProvider)}`
+        );
+        const json = await res.json();
+
+        // Stale guard
+        if (currentReqId !== activeReqIdRef.current) return;
+
+        if (res.ok && json.success && (json.sources?.length > 0 || json.download || json.embedUrl)) {
+          setConsumetData(json);
+          if (json.sources?.length > 0) {
+            setSelectedQualityUrl(json.sources[0].url);
+          }
+          if (json.subtitles?.length > 0) {
+            const eng = json.subtitles.find((s: any) => s.lang?.toLowerCase().includes('english'));
+            setSelectedSubtitle(eng ? eng.url : json.subtitles[0].url);
+          }
+          setSourcesLoading(false);
+          return;
+        } else {
+          setConsumetErrorMsg(json.message || 'No video sources found for this Consumet episode.');
+        }
+      } catch (e: any) {
+        if (currentReqId !== activeReqIdRef.current) return;
+        setConsumetErrorMsg(e?.message || 'Error connecting to Consumet streaming service.');
+      }
+
+      setSourcesLoading(false);
+    }
+
+    fetchSources();
+  }, [animeId, episodeNumber, track, activeServer, consumetEpisodes]);
+
+  // Attach HLS stream or video source when selectedQualityUrl changes
+  useEffect(() => {
+    if (activeServer !== 'consumet' || !selectedQualityUrl || !videoRef.current) return;
 
     const video = videoRef.current;
+    cleanupVideoPlayer();
 
     if (selectedQualityUrl.includes('.m3u8')) {
       if (Hls.isSupported()) {
@@ -132,15 +226,18 @@ function WatchClientContent({ id }: WatchClientProps) {
           enableWorker: true,
           lowLatencyMode: true,
         });
+        hlsRef.current = hls;
         hls.loadSource(selectedQualityUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           video.play().catch(() => {});
         });
-
-        return () => {
-          hls.destroy();
-        };
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          if (data.fatal) {
+            console.error('Fatal HLS error:', data.type);
+            setConsumetErrorMsg('Playback stream encountered a fatal error.');
+          }
+        });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = selectedQualityUrl;
         video.addEventListener('loadedmetadata', () => {
@@ -151,56 +248,11 @@ function WatchClientContent({ id }: WatchClientProps) {
       video.src = selectedQualityUrl;
       video.play().catch(() => {});
     }
-  }, [selectedQualityUrl]);
 
-  // Fetch Consumet sources when episode or audio track changes
-  useEffect(() => {
-    if (isNaN(animeId)) return;
-
-    async function fetchSources() {
-      setSourcesLoading(true);
-      setConsumetData(null);
-      setSelectedQualityUrl('');
-
-      let matchedEpId = '';
-      if (consumetEpisodes.length > 0) {
-        const found = consumetEpisodes.find((e) => e.number === episodeNumber);
-        if (found) matchedEpId = found.id;
-      }
-
-      if (!matchedEpId) {
-        matchedEpId = `${animeId}-ep-${episodeNumber}`;
-      }
-
-      try {
-        const res = await fetch(`/api/consumet/sources?episodeId=${encodeURIComponent(matchedEpId)}`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && (json.sources?.length > 0 || json.download || json.embedUrl)) {
-            setConsumetData(json);
-            if (json.sources?.length > 0) {
-              setSelectedQualityUrl(json.sources[0].url);
-            }
-            if (json.subtitles?.length > 0) {
-              const eng = json.subtitles.find((s: any) => s.lang?.toLowerCase().includes('english'));
-              setSelectedSubtitle(eng ? eng.url : json.subtitles[0].url);
-            }
-            setActiveServer('consumet');
-            setSourcesLoading(false);
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn('Consumet sources error:', e);
-      }
-
-      // If Consumet returns no direct sources, fallback to Aniweeb embed
-      setActiveServer('aniweeb');
-      setSourcesLoading(false);
-    }
-
-    fetchSources();
-  }, [animeId, episodeNumber, track, consumetEpisodes]);
+    return () => {
+      cleanupVideoPlayer();
+    };
+  }, [selectedQualityUrl, activeServer]);
 
   // Save progress on video time update
   const handleTimeUpdate = () => {
@@ -215,42 +267,6 @@ function WatchClientContent({ id }: WatchClientProps) {
         lastWatchedEpisode: episodeNumber,
         totalEpisodes: anime.episodes || undefined,
       });
-    }
-  };
-
-  const togglePlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  const toggleMute = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
-    }
-  };
-
-  const handleFullscreen = () => {
-    if (playerContainerRef.current) {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        playerContainerRef.current.requestFullscreen();
-      }
-    }
-  };
-
-  const handleSpeedChange = (speed: number) => {
-    if (videoRef.current) {
-      videoRef.current.playbackRate = speed;
-      setPlaybackSpeed(speed);
-      setShowSettings(false);
     }
   };
 
@@ -287,7 +303,7 @@ function WatchClientContent({ id }: WatchClientProps) {
   const hasPrev = episodeNumber > 1;
   const hasNext = episodeNumber < totalEps;
 
-  // Determine available direct download URL
+  // Direct Download URL
   const downloadUrl = consumetData?.download || selectedQualityUrl || (consumetData?.sources?.[0]?.url);
 
   return (
@@ -309,7 +325,7 @@ function WatchClientContent({ id }: WatchClientProps) {
             <span className="text-brand-muted hidden sm:inline">Server:</span>
             <div className="flex items-center rounded-lg border border-brand-border bg-brand-surface p-0.5">
               <button
-                onClick={() => setActiveServer('consumet')}
+                onClick={() => handleServerSelect('consumet')}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-bold text-xs transition-all ${
                   activeServer === 'consumet'
                     ? 'bg-brand-accent text-white shadow-glow-sm'
@@ -320,7 +336,7 @@ function WatchClientContent({ id }: WatchClientProps) {
                 <span>Consumet Direct</span>
               </button>
               <button
-                onClick={() => setActiveServer('aniweeb')}
+                onClick={() => handleServerSelect('aniweeb')}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-bold text-xs transition-all ${
                   activeServer === 'aniweeb'
                     ? 'bg-brand-accent text-white shadow-glow-sm'
@@ -362,71 +378,83 @@ function WatchClientContent({ id }: WatchClientProps) {
         ref={playerContainerRef}
         className="relative aspect-video w-full overflow-hidden rounded-2xl border border-brand-border bg-black shadow-2xl group"
       >
-        {sourcesLoading ? (
-          <div className="flex h-full w-full flex-col items-center justify-center p-6 text-brand-muted">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-accent border-t-transparent mb-3" />
-            <p className="text-xs font-semibold">Connecting to high-speed stream...</p>
-          </div>
-        ) : activeServer === 'consumet' && selectedQualityUrl ? (
-          /* Custom Video Player with Direct Source */
-          <div className="relative h-full w-full bg-black">
-            <video
-              ref={videoRef}
-              src={selectedQualityUrl}
-              onTimeUpdate={handleTimeUpdate}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-              controls
-              autoPlay
-              className="h-full w-full object-contain"
-            >
-              {selectedSubtitle && (
-                <track
-                  kind="subtitles"
-                  src={selectedSubtitle}
-                  srcLang="en"
-                  label="English"
-                  default
-                />
-              )}
-            </video>
-
-            {/* Custom Settings Menu */}
-            {showSettings && (
-              <div className="absolute right-4 bottom-14 z-30 w-48 rounded-xl border border-brand-border/80 bg-brand-dark/95 p-3 text-xs shadow-2xl backdrop-blur-md">
-                <p className="mb-2 font-bold text-brand-muted uppercase tracking-wider text-[10px]">
-                  Playback Speed
-                </p>
-                <div className="flex flex-col gap-1">
-                  {[0.5, 1, 1.25, 1.5, 2].map((speed) => (
-                    <button
-                      key={speed}
-                      onClick={() => handleSpeedChange(speed)}
-                      className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 font-medium transition-colors ${
-                        playbackSpeed === speed
-                          ? 'bg-brand-accent/20 text-brand-accent'
-                          : 'text-white hover:bg-brand-surface'
-                      }`}
-                    >
-                      <span>{speed}x</span>
-                      {playbackSpeed === speed && <CheckCircle2 className="h-3.5 w-3.5 text-brand-accent" />}
-                    </button>
-                  ))}
-                </div>
+        {activeServer === 'consumet' ? (
+          sourcesLoading ? (
+            <div className="flex h-full w-full flex-col items-center justify-center p-6 text-brand-muted">
+              <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-accent border-t-transparent mb-3" />
+              <p className="text-xs font-semibold">Connecting to Consumet stream...</p>
+            </div>
+          ) : consumetErrorMsg ? (
+            <div className="flex h-full w-full flex-col items-center justify-center p-6 text-center text-brand-muted">
+              <AlertTriangle className="h-10 w-10 text-amber-500 mb-3" />
+              <h3 className="text-lg font-bold text-white mb-1">Consumet Stream Unavailable</h3>
+              <p className="text-xs text-brand-muted max-w-md mb-4">{consumetErrorMsg}</p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setConsumetErrorMsg(null);
+                    activeReqIdRef.current++;
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-brand-accent px-4 py-2 text-xs font-bold text-white shadow-glow"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Retry Consumet
+                </button>
+                <button
+                  onClick={() => handleServerSelect('aniweeb')}
+                  className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-xs font-bold text-white hover:border-brand-accent"
+                >
+                  <Tv className="h-4 w-4" />
+                  Switch to AniWeeb
+                </button>
               </div>
-            )}
-          </div>
-        ) : activeServer === 'consumet' && consumetData?.embedUrl ? (
-          /* Consumet Provider Embed */
-          <iframe
-            src={consumetData.embedUrl}
-            title={`${title} - Episode ${episodeNumber}`}
-            className="h-full w-full border-0"
-            allowFullScreen
-            allow="autoplay; encrypted-media; picture-in-picture"
-          />
+            </div>
+          ) : selectedQualityUrl ? (
+            <div className="relative h-full w-full bg-black">
+              <video
+                ref={videoRef}
+                onTimeUpdate={handleTimeUpdate}
+                controls
+                autoPlay
+                className="h-full w-full object-contain"
+              >
+                {selectedSubtitle && (
+                  <track
+                    kind="subtitles"
+                    src={selectedSubtitle}
+                    srcLang="en"
+                    label="English"
+                    default
+                  />
+                )}
+              </video>
+            </div>
+          ) : consumetData?.embedUrl ? (
+            <iframe
+              src={consumetData.embedUrl}
+              title={`${title} - Episode ${episodeNumber}`}
+              className="h-full w-full border-0"
+              allowFullScreen
+              allow="autoplay; encrypted-media; picture-in-picture"
+            />
+          ) : (
+            <div className="flex h-full w-full flex-col items-center justify-center p-6 text-center text-brand-muted">
+              <Info className="h-10 w-10 text-brand-accent mb-3" />
+              <h3 className="text-lg font-bold text-white mb-1">No Consumet Direct Stream</h3>
+              <p className="text-xs text-brand-muted max-w-md mb-4">
+                No direct stream URL was returned for this episode. You can switch to the AniWeeb embed server.
+              </p>
+              <button
+                onClick={() => handleServerSelect('aniweeb')}
+                className="flex items-center gap-2 rounded-xl bg-brand-accent px-4 py-2 text-xs font-bold text-white shadow-glow"
+              >
+                <Tv className="h-4 w-4" />
+                Switch to AniWeeb Server
+              </button>
+            </div>
+          )
         ) : (
-          /* Fallback Aniweeb Embed */
+          /* Aniweeb Embed */
           !embedError ? (
             <iframe
               src={aniweebEmbedUrl}
@@ -469,8 +497,7 @@ function WatchClientContent({ id }: WatchClientProps) {
 
         {/* Action Controls: Download, Prev, Next */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Direct Download Button */}
-          {downloadUrl && (
+          {activeServer === 'consumet' && downloadUrl && (
             <a
               href={downloadUrl}
               target="_blank"
