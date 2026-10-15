@@ -3,14 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Calendar, Clock, ChevronRight, AlertTriangle, Bell, BellOff, Check } from 'lucide-react';
-import { getAiringSchedule, getAnimeTitle } from '@/lib/anilist';
-import { isReminderSet, toggleReminder } from '@/lib/userPreferences';
+import { Calendar, Clock, Tv, Play, ChevronRight, AlertTriangle } from 'lucide-react';
+import { getAiringSchedule } from '@/lib/anilist';
+import { getAnimeTitle } from '@/lib/anilist';
 
 export default function SchedulePage() {
   const [schedule, setSchedule] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [reminders, setReminders] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     async function loadSchedule() {
@@ -18,15 +17,6 @@ export default function SchedulePage() {
       try {
         const data = await getAiringSchedule();
         setSchedule(data);
-
-        // Check reminders for items in schedule
-        const remMap: Record<number, boolean> = {};
-        data.forEach((item) => {
-          if (item.media) {
-            remMap[item.media.id] = isReminderSet(item.media.id);
-          }
-        });
-        setReminders(remMap);
       } catch (e) {
         console.error('Failed to load schedule:', e);
       } finally {
@@ -36,34 +26,16 @@ export default function SchedulePage() {
     loadSchedule();
   }, []);
 
-  const handleToggleReminder = (item: any, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const media = item.media;
-    if (!media) return;
-
-    const isSet = toggleReminder({
-      animeId: media.id,
-      animeTitle: getAnimeTitle(media),
-      coverImage: media.coverImage?.large || '',
-      nextAiringAt: item.airingAt,
-      nextEpisode: item.episode,
-      createdAt: Date.now(),
-    });
-
-    setReminders((prev) => ({ ...prev, [media.id]: isSet }));
-  };
-
   return (
-    <div className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="mb-8 border-b border-brand-border/60 pb-6">
+      <div className="mb-8">
         <div className="flex items-center gap-2.5 text-brand-accent">
-          <Calendar className="h-7 w-7" />
-          <h1 className="text-2xl font-black text-white sm:text-3xl">Weekly Airing Schedule</h1>
+          <Calendar className="h-6 w-6" />
+          <h1 className="text-2xl font-black text-white sm:text-3xl">Airing Schedule</h1>
         </div>
         <p className="mt-1 text-xs sm:text-sm text-brand-muted">
-          Upcoming anime episode releases for this week. Set local reminders for your favorite titles.
+          Upcoming anime episode releases for this week.
         </p>
       </div>
 
@@ -72,7 +44,7 @@ export default function SchedulePage() {
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-accent border-t-transparent" />
         </div>
       ) : schedule.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {schedule.map((item) => {
             const media = item.media;
             if (!media) return null;
@@ -83,7 +55,6 @@ export default function SchedulePage() {
               hour: '2-digit',
               minute: '2-digit',
             });
-            const hasReminder = !!reminders[media.id];
 
             return (
               <div
@@ -97,7 +68,6 @@ export default function SchedulePage() {
                       src={coverImage}
                       alt={title}
                       fill
-                      sizes="80px"
                       className="object-cover transition-transform duration-300 group-hover:scale-105"
                     />
                   )}
@@ -110,26 +80,9 @@ export default function SchedulePage() {
                 {/* Details */}
                 <div className="ml-3 flex flex-1 flex-col justify-between py-1">
                   <div>
-                    <div className="flex items-start justify-between gap-1">
-                      <Link href={`/anime/${media.id}`}>
-                        <h2 className="line-clamp-2 text-xs font-bold text-white group-hover:text-brand-accent transition-colors">
-                          {title}
-                        </h2>
-                      </Link>
-
-                      <button
-                        onClick={(e) => handleToggleReminder(item, e)}
-                        title={hasReminder ? 'Remove Reminder' : 'Set Release Reminder'}
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border transition-all ${
-                          hasReminder
-                            ? 'border-brand-accent bg-brand-accent/20 text-brand-accent'
-                            : 'border-brand-border bg-brand-dark text-brand-muted hover:text-white hover:border-brand-accent'
-                        }`}
-                      >
-                        {hasReminder ? <Bell className="h-3.5 w-3.5 fill-brand-accent" /> : <BellOff className="h-3.5 w-3.5" />}
-                      </button>
-                    </div>
-
+                    <h2 className="line-clamp-2 text-sm font-bold text-white group-hover:text-brand-accent transition-colors">
+                      {title}
+                    </h2>
                     <div className="mt-1.5 flex items-center gap-1 text-[11px] text-brand-muted">
                       <Clock className="h-3 w-3 text-brand-accent" />
                       <span>{airTime}</span>

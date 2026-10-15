@@ -13,6 +13,21 @@ export interface AnimeCoverImage {
 
 export type WatchlistCategory = 'Watching' | 'Plan to Watch' | 'Completed' | 'On Hold' | 'Dropped' | 'Favourites';
 
+export interface AnimeRelationEdge {
+  relationType: 'PREQUEL' | 'SEQUEL' | 'PARENT' | 'SIDE_STORY' | 'ALTERNATIVE' | 'SUMMARY' | 'SPIN_OFF' | 'OTHER' | string;
+  node: {
+    id: number;
+    title: AnimeTitle;
+    coverImage: AnimeCoverImage;
+    bannerImage?: string;
+    format?: string;
+    status?: string;
+    episodes?: number;
+    seasonYear?: number;
+    meanScore?: number;
+  };
+}
+
 export interface AnimeMedia {
   id: number;
   title: AnimeTitle;
@@ -35,6 +50,9 @@ export interface AnimeMedia {
     airingAt: number;
     timeUntilAiring: number;
     episode: number;
+  };
+  relations?: {
+    edges?: AnimeRelationEdge[];
   };
 }
 
