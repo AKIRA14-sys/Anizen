@@ -2,6 +2,7 @@ import HeroCarousel from '@/components/HeroCarousel';
 import ContinueWatchingRail from '@/components/ContinueWatchingRail';
 import AnimeRail from '@/components/AnimeRail';
 import GenreSection from '@/components/GenreSection';
+import HomepageInfiniteFeed from '@/components/HomepageInfiniteFeed';
 import { AnimeMedia } from '@/types/anime';
 import {
   getFeaturedAnime,
@@ -92,6 +93,9 @@ export default async function HomePage() {
           items={topRatedList}
           viewAllHref="/explore?sort=SCORE_DESC"
         />
+
+        {/* Dynamic Continuous Infinite Feed for Homepage */}
+        <HomepageInfiniteFeed initialItems={trendingList} />
       </main>
     </div>
   );
