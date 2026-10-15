@@ -110,7 +110,7 @@ export async function getFeaturedAnime(): Promise<AnimeMedia[]> {
   return data.Page.media.filter(item => item.bannerImage || item.coverImage.extraLarge);
 }
 
-// Get Trending Anime
+// Get Trending Anime with Pagination
 export async function getTrendingAnime(page = 1, perPage = 12): Promise<AnimeMedia[]> {
   const query = `
     query ($page: Int, $perPage: Int) {
@@ -122,10 +122,10 @@ export async function getTrendingAnime(page = 1, perPage = 12): Promise<AnimeMed
     }
   `;
   const data = await fetchGraphQL<{ Page: { media: AnimeMedia[] } }>(query, { page, perPage });
-  return data.Page.media;
+  return data.Page.media || [];
 }
 
-// Get Current Season Anime
+// Get Current Season Anime with Pagination
 export async function getSeasonalAnime(page = 1, perPage = 12): Promise<AnimeMedia[]> {
   const date = new Date();
   const year = date.getFullYear();
@@ -150,10 +150,10 @@ export async function getSeasonalAnime(page = 1, perPage = 12): Promise<AnimeMed
     page,
     perPage,
   });
-  return data.Page.media;
+  return data.Page.media || [];
 }
 
-// Get Top Rated Anime
+// Get Top Rated Anime with Pagination
 export async function getTopRatedAnime(page = 1, perPage = 12): Promise<AnimeMedia[]> {
   const query = `
     query ($page: Int, $perPage: Int) {
@@ -165,10 +165,10 @@ export async function getTopRatedAnime(page = 1, perPage = 12): Promise<AnimeMed
     }
   `;
   const data = await fetchGraphQL<{ Page: { media: AnimeMedia[] } }>(query, { page, perPage });
-  return data.Page.media;
+  return data.Page.media || [];
 }
 
-// Get Hidden Gems Anime
+// Get Hidden Gems Anime with Pagination
 export async function getHiddenGemsAnime(page = 1, perPage = 12): Promise<AnimeMedia[]> {
   const query = `
     query ($page: Int, $perPage: Int) {
@@ -195,14 +195,37 @@ export async function getHiddenGemsAnime(page = 1, perPage = 12): Promise<AnimeM
   }
 }
 
-// Get Airing Schedule
+// Get Random Anime
+export async function getRandomAnime(): Promise<AnimeMedia | null> {
+  const randomPage = Math.floor(Math.random() * 5) + 1;
+  try {
+    const { media } = await searchAnime({ sort: 'POPULARITY_DESC', page: randomPage, perPage: 20 });
+    if (!media || media.length === 0) return null;
+    const randomIndex = Math.floor(Math.random() * media.length);
+    return media[randomIndex];
+  } catch (error) {
+    console.error('Failed to get random anime:', error);
+    return null;
+  }
+}
+
+// Get Airing Schedule (Single Page)
 export async function getAiringSchedule(): Promise<any[]> {
+  const res = await getAiringSchedulePaginated(1, 24);
+  return res.schedules;
+}
+
+// Get Airing Schedule with Pagination Support
+export async function getAiringSchedulePaginated(page = 1, perPage = 24): Promise<{ schedules: any[]; hasNextPage: boolean }> {
   const now = Math.floor(Date.now() / 1000);
-  const weekLater = now + 7 * 24 * 3600;
+  const weekLater = now + 14 * 24 * 3600; // 2 weeks window
 
   const query = `
-    query ($airingAt_greater: Int, $airingAt_lesser: Int) {
-      Page(page: 1, perPage: 24) {
+    query ($airingAt_greater: Int, $airingAt_lesser: Int, $page: Int, $perPage: Int) {
+      Page(page: $page, perPage: $perPage) {
+        pageInfo {
+          hasNextPage
+        }
         airingSchedules(airingAt_greater: $airingAt_greater, airingAt_lesser: $airingAt_lesser, sort: TIME) {
           id
           airingAt
@@ -217,46 +240,109 @@ export async function getAiringSchedule(): Promise<any[]> {
   `;
 
   try {
-    const data = await fetchGraphQL<{ Page: { airingSchedules: any[] } }>(query, {
+    const data = await fetchGraphQL<{ Page: { pageInfo: { hasNextPage: boolean }; airingSchedules: any[] } }>(query, {
       airingAt_greater: now,
       airingAt_lesser: weekLater,
+      page,
+      perPage,
     });
-    return data.Page.airingSchedules || [];
+    return {
+      schedules: data.Page.airingSchedules || [],
+      hasNextPage: !!data.Page.pageInfo?.hasNextPage,
+    };
   } catch (e) {
     console.error('Failed to fetch airing schedule:', e);
-    return [];
+    return { schedules: [], hasNextPage: false };
   }
+}
+
+export interface SearchAnimeOptions {
+  searchQuery?: string;
+  genre?: string;
+  sort?: string;
+  page?: number;
+  perPage?: number;
+  format?: string;
+  status?: string;
+  season?: string;
+  seasonYear?: number;
+  minScore?: number;
 }
 
 // Search and Filter Anime
 export async function searchAnime(
-  searchQuery?: string,
+  searchQueryOrOptions?: string | SearchAnimeOptions,
   genre?: string,
   sort: string = 'POPULARITY_DESC',
   page = 1,
   perPage = 24
 ): Promise<{ media: AnimeMedia[]; hasNextPage: boolean }> {
+  let opts: SearchAnimeOptions = {};
+
+  if (typeof searchQueryOrOptions === 'object' && searchQueryOrOptions !== null) {
+    opts = searchQueryOrOptions;
+  } else {
+    opts = {
+      searchQuery: searchQueryOrOptions,
+      genre,
+      sort,
+      page,
+      perPage,
+    };
+  }
+
+  const p = opts.page || 1;
+  const pp = opts.perPage || 24;
+  const s = opts.sort || 'POPULARITY_DESC';
+
   const query = `
-    query ($search: String, $genre: String, $sort: [MediaSort], $page: Int, $perPage: Int) {
+    query (
+      $search: String,
+      $genre: String,
+      $sort: [MediaSort],
+      $page: Int,
+      $perPage: Int,
+      $format: MediaFormat,
+      $status: MediaStatus,
+      $season: MediaSeason,
+      $seasonYear: Int,
+      $minScore: Int
+    ) {
       Page(page: $page, perPage: $perPage) {
         pageInfo {
           hasNextPage
         }
-        media(type: ANIME, search: $search, genre: $genre, sort: $sort, isAdult: false) {
+        media(
+          type: ANIME,
+          search: $search,
+          genre: $genre,
+          sort: $sort,
+          format: $format,
+          status: $status,
+          season: $season,
+          seasonYear: $seasonYear,
+          averageScore_greater: $minScore,
+          isAdult: false
+        ) {
           ${MEDIA_FIELDS}
         }
       }
     }
   `;
 
-  const variables: Record<string, any> = { page, perPage, sort: [sort] };
-  if (searchQuery && searchQuery.trim()) variables.search = searchQuery.trim();
-  if (genre && genre.trim()) variables.genre = genre.trim();
+  const variables: Record<string, any> = { page: p, perPage: pp, sort: [s] };
+  if (opts.searchQuery && opts.searchQuery.trim()) variables.search = opts.searchQuery.trim();
+  if (opts.genre && opts.genre.trim() && opts.genre !== 'All') variables.genre = opts.genre.trim();
+  if (opts.format && opts.format !== 'All') variables.format = opts.format;
+  if (opts.status && opts.status !== 'All') variables.status = opts.status;
+  if (opts.season && opts.season !== 'All') variables.season = opts.season;
+  if (opts.seasonYear) variables.seasonYear = opts.seasonYear;
+  if (opts.minScore && opts.minScore > 0) variables.minScore = opts.minScore * 10;
 
   const data = await fetchGraphQL<{ Page: { pageInfo: { hasNextPage: boolean }; media: AnimeMedia[] } }>(query, variables);
   return {
-    media: data.Page.media,
-    hasNextPage: data.Page.pageInfo.hasNextPage,
+    media: data.Page.media || [],
+    hasNextPage: !!data.Page.pageInfo?.hasNextPage,
   };
 }
 
