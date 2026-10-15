@@ -31,8 +31,6 @@ interface ProviderInstance {
 }
 
 function createProviders(): ProviderInstance[] {
-  const providers: ProviderInstance[] = [];
-
   const constructors: Array<{
     name: string;
     create: () => any;
@@ -47,13 +45,15 @@ function createProviders(): ProviderInstance[] {
     },
     {
       name: "animekai",
-      create: () => new ANIME.Animekai(),
+      create: () => new ANIME.AnimeKai(),
     },
     {
       name: "kickassanime",
-      create: () => new ANIME.Kickassanime(),
+      create: () => new ANIME.KickAssAnime(),
     },
   ];
+
+  const providers: ProviderInstance[] = [];
 
   for (const item of constructors) {
     try {
@@ -74,9 +74,6 @@ function createProviders(): ProviderInstance[] {
 
 const PROVIDERS = createProviders();
 
-/**
- * Search Consumet by anime title.
- */
 export async function getConsumetEpisodesByTitle(
   title: string
 ): Promise<{
@@ -152,7 +149,7 @@ export async function getConsumetEpisodesByTitle(
       }
     } catch (error) {
       console.warn(
-        `[Consumet] Search failed on ${name} for "${normalizedTitle}":`,
+        `[Consumet] Search failed on ${name}:`,
         error
       );
     }
@@ -163,21 +160,14 @@ export async function getConsumetEpisodesByTitle(
 
 /**
  * Compatibility helper.
- * Its argument must be an anime TITLE, not an AniList ID.
+ * The argument must be an anime title, not an AniList ID.
  */
 export async function getConsumetEpisodes(
   title: string
-): Promise<{
-  animeId: string;
-  provider: string;
-  episodes: ConsumetEpisode[];
-} | null> {
+) {
   return getConsumetEpisodesByTitle(title);
 }
 
-/**
- * Fetch sources using the exact episode ID and its provider.
- */
 export async function getConsumetSources(
   episodeId: string,
   providerName: string
@@ -195,9 +185,8 @@ export async function getConsumetSources(
   }
 
   try {
-    const response = await provider.instance.fetchEpisodeSources(
-      episodeId
-    );
+    const response =
+      await provider.instance.fetchEpisodeSources(episodeId);
 
     if (!response) {
       return null;
