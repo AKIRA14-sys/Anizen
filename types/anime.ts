@@ -11,6 +11,8 @@ export interface AnimeCoverImage {
   color?: string;
 }
 
+export type WatchlistCategory = 'Watching' | 'Plan to Watch' | 'Completed' | 'On Hold' | 'Dropped' | 'Favourites';
+
 export interface AnimeMedia {
   id: number;
   title: AnimeTitle;
@@ -18,6 +20,7 @@ export interface AnimeMedia {
   bannerImage?: string;
   description?: string;
   status?: string;
+  format?: string;
   episodes?: number;
   season?: string;
   seasonYear?: number;
@@ -25,6 +28,9 @@ export interface AnimeMedia {
   averageScore?: number;
   popularity?: number;
   genres?: string[];
+  studios?: {
+    nodes?: Array<{ id: number; name: string }>;
+  };
   nextAiringEpisode?: {
     airingAt: number;
     timeUntilAiring: number;
@@ -74,6 +80,7 @@ export interface WatchlistItem {
   meanScore?: number;
   seasonYear?: number;
   addedAt: number;
+  category: WatchlistCategory;
 }
 
 export interface WatchProgressItem {

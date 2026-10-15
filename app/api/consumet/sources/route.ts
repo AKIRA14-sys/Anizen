@@ -1,56 +1,31 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getConsumetSources } from "@/lib/consumet";
-
-export const runtime = "nodejs";
-
-const ALLOWED_PROVIDERS = new Set([
-  "hianime",
-  "animepahe",
-  "animekai",
-  "kickassanime",
-]);
+import { NextRequest, NextResponse } from 'next/server';
+import { getConsumetSources } from '@/lib/consumet';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+  const episodeId = searchParams.get('episodeId');
+  const provider = searchParams.get('provider') || undefined;
 
-  const episodeId = searchParams.get("episodeId")?.trim();
-  const providerName = searchParams.get("provider")?.trim();
-
-  if (!episodeId || !providerName) {
+  if (!episodeId) {
     return NextResponse.json(
       {
         success: false,
         sources: [],
-        error: "episodeId and provider are required",
-      },
-      { status: 400 }
-    );
-  }
-
-  if (!ALLOWED_PROVIDERS.has(providerName)) {
-    return NextResponse.json(
-      {
-        success: false,
-        sources: [],
-        error: "Unsupported Consumet provider",
+        message: 'Missing episodeId parameter',
       },
       { status: 400 }
     );
   }
 
   try {
-    const data = await getConsumetSources(
-      episodeId,
-      providerName
-    );
+    const data = await getConsumetSources(episodeId, provider);
 
-    if (!data) {
+    if (!data || (data.sources.length === 0 && !data.download && !data.embedUrl)) {
       return NextResponse.json(
         {
           success: false,
           sources: [],
-          subtitles: [],
-          message: "No streaming sources are available",
+          message: `No video sources found for episode ID: ${episodeId}`,
         },
         { status: 404 }
       );
@@ -63,24 +38,19 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control":
-            "public, max-age=300, s-maxage=600, stale-while-revalidate=1800",
+          'Cache-Control': 'public, max-age=3600, s-maxage=7200, stale-while-revalidate=86400',
         },
       }
     );
-  } catch (error) {
-    console.error(
-      `[Consumet] Source lookup failed for ${providerName}:`,
-      error
-    );
-
+  } catch (error: any) {
+    console.error(`[API] Error in /api/consumet/sources for episodeId ${episodeId}:`, error?.message || error);
     return NextResponse.json(
       {
         success: false,
         sources: [],
-        error: "Unable to retrieve streaming sources",
+        message: 'Failed to extract video sources.',
       },
-      { status: 502 }
+      { status: 500 }
     );
   }
 }

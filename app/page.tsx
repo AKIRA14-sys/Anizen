@@ -9,6 +9,7 @@ import {
   getTrendingAnime,
   getSeasonalAnime,
   getTopRatedAnime,
+  getHiddenGemsAnime,
 } from '@/lib/anilist';
 
 export const revalidate = 3600; // Revalidate page hourly
@@ -18,20 +19,23 @@ export default async function HomePage() {
   let trendingList: AnimeMedia[] = [];
   let seasonalList: AnimeMedia[] = [];
   let topRatedList: AnimeMedia[] = [];
+  let hiddenGemsList: AnimeMedia[] = [];
   let errorOccurred = false;
 
   try {
-    const [featured, trending, seasonal, topRated] = await Promise.all([
+    const [featured, trending, seasonal, topRated, hiddenGems] = await Promise.all([
       getFeaturedAnime(),
-      getTrendingAnime(1, 6),
-      getSeasonalAnime(1, 6),
-      getTopRatedAnime(1, 6),
+      getTrendingAnime(1, 12),
+      getSeasonalAnime(1, 12),
+      getTopRatedAnime(1, 12),
+      getHiddenGemsAnime(1, 12),
     ]);
 
     featuredList = featured;
     trendingList = trending;
     seasonalList = seasonal;
     topRatedList = topRated;
+    hiddenGemsList = hiddenGems;
   } catch (error) {
     console.error('Failed to load homepage data:', error);
     errorOccurred = true;
@@ -74,6 +78,15 @@ export default async function HomePage() {
           items={seasonalList}
           viewAllHref="/explore?sort=POPULARITY_DESC"
         />
+
+        {hiddenGemsList.length > 0 && (
+          <AnimeRail
+            title="Hidden Gems"
+            subtitle="Critically acclaimed titles with moderate popularity"
+            items={hiddenGemsList}
+            viewAllHref="/explore?sort=SCORE_DESC"
+          />
+        )}
 
         <GenreSection />
 
