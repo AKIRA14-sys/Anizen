@@ -3,13 +3,28 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Search, Bookmark, Compass, Home, Menu, X, Play, Download } from 'lucide-react';
+import {
+  Search,
+  Bookmark,
+  Compass,
+  Home,
+  Menu,
+  X,
+  Play,
+  Calendar,
+  BarChart2,
+  Dices,
+  BookOpen,
+  ShieldAlert,
+} from 'lucide-react';
+import { getRandomAnime } from '@/lib/anilist';
 
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSurprising, setIsSurprising] = useState(false);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,17 +35,36 @@ export default function Navbar() {
     }
   };
 
+  const handleSurpriseMe = async () => {
+    setIsSurprising(true);
+    try {
+      const randomItem = await getRandomAnime();
+      if (randomItem) {
+        router.push(`/anime/${randomItem.id}`);
+        setMobileMenuOpen(false);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSurprising(false);
+    }
+  };
+
   const navLinks = [
     { name: 'Home', href: '/', icon: Home },
     { name: 'Explore', href: '/explore', icon: Compass },
+    { name: 'Manga', href: '/manga', icon: BookOpen },
+    { name: 'Schedule', href: '/schedule', icon: Calendar },
     { name: 'Watchlist', href: '/watchlist', icon: Bookmark },
+    { name: 'Stats', href: '/stats', icon: BarChart2 },
+    { name: 'Admin', href: '/admin', icon: ShieldAlert },
   ];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-brand-border/60 bg-brand-dark/90 backdrop-blur-md transition-colors">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         {/* Brand Logo */}
-        <Link href="/" className="group flex items-center gap-2">
+        <Link href="/" className="group flex items-center gap-2 shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-tr from-brand-accent to-amber-500 text-white shadow-glow-sm transition-transform group-hover:scale-105">
             <Play className="h-5 w-5 fill-white text-white ml-0.5" />
           </div>
@@ -40,7 +74,7 @@ export default function Navbar() {
         </Link>
 
         {/* Desktop Navigation */}
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 lg:flex">
           {navLinks.map((link) => {
             const Icon = link.icon;
             const isActive = pathname === link.href;
@@ -48,9 +82,9 @@ export default function Navbar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-all ${
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
                   isActive
-                    ? 'bg-brand-accent/10 text-brand-accent font-semibold'
+                    ? 'bg-brand-accent/15 text-brand-accent font-bold'
                     : 'text-brand-muted hover:bg-brand-surface hover:text-white'
                 }`}
               >
@@ -61,28 +95,46 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* Desktop Quick Search */}
-        <div className="hidden md:flex md:items-center gap-3">
-          <form onSubmit={handleSearchSubmit} className="relative w-56 lg:w-64">
+        {/* Desktop Search & Surprise Me */}
+        <div className="hidden md:flex md:items-center gap-2.5">
+          <button
+            onClick={handleSurpriseMe}
+            disabled={isSurprising}
+            title="Random Anime Discovery"
+            className="flex items-center gap-1.5 rounded-lg border border-brand-border bg-brand-surface px-3 py-1.5 text-xs font-bold text-brand-accent hover:border-brand-accent hover:bg-brand-accent/10 transition-all"
+          >
+            <Dices className={`h-4 w-4 ${isSurprising ? 'animate-spin' : ''}`} />
+            <span>Surprise Me</span>
+          </button>
+
+          <form onSubmit={handleSearchSubmit} className="relative w-48 lg:w-56">
             <input
               type="text"
               placeholder="Search anime..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-full border border-brand-border bg-brand-surface py-1.5 pl-9 pr-4 text-sm text-white placeholder-brand-muted transition-colors focus:border-brand-accent focus:outline-none focus:ring-1 focus:ring-brand-accent"
+              className="w-full rounded-full border border-brand-border bg-brand-surface py-1.5 pl-9 pr-4 text-xs text-white placeholder-brand-muted transition-colors focus:border-brand-accent focus:outline-none focus:ring-1 focus:ring-brand-accent"
             />
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-brand-muted" />
+            <Search className="absolute left-3 top-2 h-3.5 w-3.5 text-brand-muted" />
           </form>
         </div>
 
         {/* Mobile Menu Toggle Button */}
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex items-center gap-2 lg:hidden">
+          <button
+            onClick={handleSurpriseMe}
+            disabled={isSurprising}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-brand-border bg-brand-surface text-brand-accent hover:bg-brand-accent/10"
+            aria-label="Surprise Me"
+          >
+            <Dices className={`h-4 w-4 ${isSurprising ? 'animate-spin' : ''}`} />
+          </button>
           <Link
             href="/explore"
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-brand-border bg-brand-surface text-brand-muted hover:text-white"
             aria-label="Search"
           >
-            <Search className="h-5 w-5" />
+            <Search className="h-4 w-4" />
           </Link>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -96,7 +148,7 @@ export default function Navbar() {
 
       {/* Mobile Navigation Drawer */}
       {mobileMenuOpen && (
-        <div className="border-b border-brand-border bg-brand-dark px-4 pb-5 pt-3 md:hidden">
+        <div className="border-b border-brand-border bg-brand-dark px-4 pb-5 pt-3 lg:hidden">
           <form onSubmit={handleSearchSubmit} className="mb-4 relative">
             <input
               type="text"
