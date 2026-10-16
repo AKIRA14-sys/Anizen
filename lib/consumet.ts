@@ -72,7 +72,7 @@ export async function getConsumetEpisodesResult(anilistId: string): Promise<Cons
 
     if (info && Array.isArray(info.episodes) && info.episodes.length > 0) {
       const episodes: ConsumetEpisode[] = info.episodes
-        .filter((ep: any) => ep && (ep.id || ep.number))
+        .filter((ep: any) => ep && ep.id && typeof ep.id === 'string' && ep.id.trim() !== '')
         .map((ep: any) => ({
           id: String(ep.id),
           number: Number(ep.number || 1),
@@ -122,18 +122,18 @@ export async function getConsumetEpisodesResult(anilistId: string): Promise<Cons
   }
 
   if (title) {
-    // Try HiAnime by title search
+    // 2a. Try HiAnime by title search
     try {
       const hianime = new ANIME.Hianime();
-      const searchRes = await withTimeout(
+      const searchRes: any = await withTimeout(
         hianime.search(title),
         6000,
         'HiAnime title search timed out (6s)'
       );
 
-      if (searchRes.results && searchRes.results.length > 0) {
+      if (searchRes && searchRes.results && searchRes.results.length > 0) {
         const first = searchRes.results[0];
-        const info = await withTimeout(
+        const info: any = await withTimeout(
           hianime.fetchAnimeInfo(first.id),
           6000,
           'HiAnime fetchAnimeInfo timed out (6s)'
@@ -141,7 +141,7 @@ export async function getConsumetEpisodesResult(anilistId: string): Promise<Cons
 
         if (info && Array.isArray(info.episodes) && info.episodes.length > 0) {
           const episodes: ConsumetEpisode[] = info.episodes
-            .filter((ep: any) => ep && ep.id)
+            .filter((ep: any) => ep && ep.id && typeof ep.id === 'string' && ep.id.trim() !== '')
             .map((ep: any) => ({
               id: String(ep.id),
               number: Number(ep.number || 1),
@@ -172,6 +172,57 @@ export async function getConsumetEpisodesResult(anilistId: string): Promise<Cons
         message: err?.message || 'HiAnime provider error during episode discovery.',
       });
     }
+
+    // 2b. Try AnimePahe as secondary provider
+    try {
+      const animepahe = new ANIME.AnimePahe();
+      const searchRes: any = await withTimeout(
+        animepahe.search(title),
+        6000,
+        'AnimePahe title search timed out (6s)'
+      );
+
+      if (searchRes && searchRes.results && searchRes.results.length > 0) {
+        const first = searchRes.results[0];
+        const info: any = await withTimeout(
+          animepahe.fetchAnimeInfo(first.id),
+          6000,
+          'AnimePahe fetchAnimeInfo timed out (6s)'
+        );
+
+        if (info && Array.isArray(info.episodes) && info.episodes.length > 0) {
+          const episodes: ConsumetEpisode[] = info.episodes
+            .filter((ep: any) => ep && ep.id && typeof ep.id === 'string' && ep.id.trim() !== '')
+            .map((ep: any) => ({
+              id: String(ep.id),
+              number: Number(ep.number || 1),
+              title: ep.title || `Episode ${ep.number}`,
+              image: ep.image,
+              url: ep.url,
+              provider: 'animepahe',
+            }));
+
+          if (episodes.length > 0) {
+            return {
+              success: true,
+              anilistId,
+              episodes,
+              errors,
+            };
+          }
+        }
+      } else {
+        errors.push({
+          provider: 'AnimePahe',
+          message: `No AnimePahe matches found for title "${title}".`,
+        });
+      }
+    } catch (err: any) {
+      errors.push({
+        provider: 'AnimePahe',
+        message: err?.message || 'AnimePahe provider error during episode discovery.',
+      });
+    }
   }
 
   return {
@@ -197,19 +248,21 @@ export async function getConsumetEpisodes(anilistId: string): Promise<ConsumetEp
 export async function getConsumetEpisodesByTitle(title: string): Promise<ConsumetEpisode[]> {
   try {
     const hianime = new ANIME.Hianime();
-    const searchRes = await withTimeout(hianime.search(title), 6000, 'Title search timed out');
-    if (searchRes.results && searchRes.results.length > 0) {
+    const searchRes: any = await withTimeout(hianime.search(title), 6000, 'Title search timed out');
+    if (searchRes && searchRes.results && searchRes.results.length > 0) {
       const first = searchRes.results[0];
-      const info = await withTimeout(hianime.fetchAnimeInfo(first.id), 6000, 'Info fetch timed out');
+      const info: any = await withTimeout(hianime.fetchAnimeInfo(first.id), 6000, 'Info fetch timed out');
       if (info && Array.isArray(info.episodes) && info.episodes.length > 0) {
-        return info.episodes.map((ep: any) => ({
-          id: String(ep.id),
-          number: Number(ep.number || 1),
-          title: ep.title || `Episode ${ep.number}`,
-          image: ep.image,
-          url: ep.url,
-          provider: 'hianime',
-        }));
+        return info.episodes
+          .filter((ep: any) => ep && ep.id && typeof ep.id === 'string' && ep.id.trim() !== '')
+          .map((ep: any) => ({
+            id: String(ep.id),
+            number: Number(ep.number || 1),
+            title: ep.title || `Episode ${ep.number}`,
+            image: ep.image,
+            url: ep.url,
+            provider: 'hianime',
+          }));
       }
     }
   } catch (err: any) {
@@ -263,6 +316,44 @@ export async function getConsumetSources(
       }
     } catch (err: any) {
       console.warn(`[Consumet] HiAnime source extraction failed for ${episodeId}:`, err?.message || err);
+    }
+  }
+
+  if (targetProvider === 'animepahe') {
+    try {
+      const animepahe = new ANIME.AnimePahe();
+      const res: any = await withTimeout(
+        animepahe.fetchEpisodeSources(episodeId),
+        8000,
+        'AnimePahe source fetch timed out (8s)'
+      );
+
+      if (res && (res.sources?.length > 0 || res.download || res.embedUrl || res.embedURL)) {
+        const downloadLink = typeof res.download === 'string'
+          ? res.download
+          : Array.isArray(res.download) && res.download.length > 0
+            ? res.download[0]?.url
+            : undefined;
+
+        return {
+          provider: 'animepahe',
+          headers: res.headers as Record<string, string> | undefined,
+          sources: (res.sources || []).map((s: any) => ({
+            url: s.url,
+            isM3U8: Boolean(s.isM3U8 || s.url?.includes('.m3u8')),
+            quality: s.quality || 'default',
+            isDASH: Boolean(s.isDASH),
+          })),
+          subtitles: (res.subtitles || []).map((sub: any) => ({
+            url: sub.url,
+            lang: sub.lang || sub.language || 'English',
+          })),
+          download: downloadLink,
+          embedUrl: res.embedUrl || res.embedURL,
+        };
+      }
+    } catch (err: any) {
+      console.warn(`[Consumet] AnimePahe source extraction failed for ${episodeId}:`, err?.message || err);
     }
   }
 
