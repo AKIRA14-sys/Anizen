@@ -5,20 +5,21 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const episodeId = searchParams.get('episodeId');
   const provider = searchParams.get('provider') || undefined;
+  const track = searchParams.get('track') || undefined; // 'sub' or 'dub'
 
   if (!episodeId) {
     return NextResponse.json(
       {
         success: false,
         sources: [],
-        message: 'Missing episodeId parameter',
+        message: 'Missing required episodeId parameter.',
       },
       { status: 400 }
     );
   }
 
   try {
-    const data = await getConsumetSources(episodeId, provider);
+    const data = await getConsumetSources(episodeId, provider, track);
 
     if (!data || (data.sources.length === 0 && !data.download && !data.embedUrl)) {
       return NextResponse.json(
