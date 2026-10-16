@@ -14,7 +14,6 @@ import {
   Tv,
   Download,
   Server,
-  CheckCircle2,
 } from 'lucide-react';
 import { AnimeMedia, AniweebEpisodesResponse } from '@/types/anime';
 import { getAnimeById, getAnimeTitle } from '@/lib/anilist';
@@ -53,11 +52,12 @@ function WatchClientContent({ id }: WatchClientProps) {
 
   const [anime, setAnime] = useState<AnimeMedia | null>(null);
   const [track, setTrack] = useState<'sub' | 'dub'>('sub');
-  const [activeServer, setActiveServer] = useState<'consumet' | 'aniweeb'>('consumet');
+
+  // 1. Aniweeb is the DEFAULT playback server (reliable)
+  const [activeServer, setActiveServer] = useState<'aniweeb' | 'consumet'>('aniweeb');
 
   // Episodes state
   const [consumetEpisodes, setConsumetEpisodes] = useState<any[]>([]);
-  const [consumetErrors, setConsumetErrors] = useState<any[]>([]);
   const [aniweebEpisodes, setAniweebEpisodes] = useState<AniweebEpisodesResponse | null>(null);
 
   // Consumet sources state
@@ -91,7 +91,7 @@ function WatchClientContent({ id }: WatchClientProps) {
     }
   };
 
-  // Initial load for Anime metadata and Aniweeb episodes
+  // Initial load for Anime metadata, Aniweeb episodes, and background Consumet episodes
   useEffect(() => {
     if (isNaN(animeId)) return;
 
@@ -107,6 +107,16 @@ function WatchClientContent({ id }: WatchClientProps) {
 
         setAnime(media);
         setAniweebEpisodes(aniweebRes);
+
+        // Fetch Consumet episodes in background
+        fetch(`/api/consumet/episodes/${animeId}`)
+          .then((res) => res.json())
+          .then((json) => {
+            if (json.success && Array.isArray(json.episodes)) {
+              setConsumetEpisodes(json.episodes);
+            }
+          })
+          .catch(() => {});
       } catch (e) {
         console.error('Error fetching initial anime watch data:', e);
       } finally {
@@ -118,7 +128,7 @@ function WatchClientContent({ id }: WatchClientProps) {
   }, [animeId]);
 
   // Handle server selection changes cleanly
-  const handleServerSelect = (server: 'consumet' | 'aniweeb') => {
+  const handleServerSelect = (server: 'aniweeb' | 'consumet') => {
     setActiveServer(server);
     if (server === 'aniweeb') {
       cleanupVideoPlayer();
@@ -128,30 +138,7 @@ function WatchClientContent({ id }: WatchClientProps) {
     }
   };
 
-  // Load Consumet episode list when activeServer is 'consumet'
-  useEffect(() => {
-    if (isNaN(animeId) || activeServer !== 'consumet') return;
-
-    async function fetchConsumetEpisodes() {
-      try {
-        const res = await fetch(`/api/consumet/episodes/${animeId}`);
-        const json = await res.json();
-        if (res.ok && json.success && Array.isArray(json.episodes)) {
-          setConsumetEpisodes(json.episodes);
-          setConsumetErrors([]);
-        } else {
-          setConsumetEpisodes([]);
-          setConsumetErrors(json.errors || []);
-        }
-      } catch (e) {
-        console.warn('Failed to fetch Consumet episode list:', e);
-      }
-    }
-
-    fetchConsumetEpisodes();
-  }, [animeId, activeServer]);
-
-  // Load Consumet episode sources when activeServer is 'consumet', episode, or track changes
+  // Fetch Consumet sources ONLY when activeServer is 'consumet' and a real episode ID exists
   useEffect(() => {
     if (isNaN(animeId) || activeServer !== 'consumet') return;
 
@@ -164,24 +151,20 @@ function WatchClientContent({ id }: WatchClientProps) {
       setSelectedQualityUrl('');
       cleanupVideoPlayer();
 
-      let matchedEpId = '';
-      let matchedProvider = 'anilist';
+      // Find REAL episode from Consumet episode list
+      const matchedEp = consumetEpisodes.find((e) => e.number === episodeNumber);
 
-      if (consumetEpisodes.length > 0) {
-        const found = consumetEpisodes.find((e) => e.number === episodeNumber);
-        if (found) {
-          matchedEpId = found.id;
-          matchedProvider = found.provider || 'anilist';
+      if (!matchedEp || !matchedEp.id) {
+        if (currentReqId === activeReqIdRef.current) {
+          setConsumetErrorMsg(`Consumet has no indexed stream for Episode ${episodeNumber}.`);
+          setSourcesLoading(false);
         }
-      }
-
-      if (!matchedEpId) {
-        matchedEpId = `${animeId}-ep-${episodeNumber}`;
+        return;
       }
 
       try {
         const res = await fetch(
-          `/api/consumet/sources?episodeId=${encodeURIComponent(matchedEpId)}&provider=${encodeURIComponent(matchedProvider)}`
+          `/api/consumet/sources?episodeId=${encodeURIComponent(matchedEp.id)}&provider=${encodeURIComponent(matchedEp.provider || 'anilist')}&track=${track}`
         );
         const json = await res.json();
 
@@ -200,7 +183,7 @@ function WatchClientContent({ id }: WatchClientProps) {
           setSourcesLoading(false);
           return;
         } else {
-          setConsumetErrorMsg(json.message || 'No video sources found for this Consumet episode.');
+          setConsumetErrorMsg(json.message || 'No direct video sources returned for this episode.');
         }
       } catch (e: any) {
         if (currentReqId !== activeReqIdRef.current) return;
@@ -325,6 +308,17 @@ function WatchClientContent({ id }: WatchClientProps) {
             <span className="text-brand-muted hidden sm:inline">Server:</span>
             <div className="flex items-center rounded-lg border border-brand-border bg-brand-surface p-0.5">
               <button
+                onClick={() => handleServerSelect('aniweeb')}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-bold text-xs transition-all ${
+                  activeServer === 'aniweeb'
+                    ? 'bg-brand-accent text-white shadow-glow-sm'
+                    : 'text-brand-muted hover:text-white'
+                }`}
+              >
+                <Tv className="h-3 w-3" />
+                <span>Aniweeb Embed (Default)</span>
+              </button>
+              <button
                 onClick={() => handleServerSelect('consumet')}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-bold text-xs transition-all ${
                   activeServer === 'consumet'
@@ -334,17 +328,6 @@ function WatchClientContent({ id }: WatchClientProps) {
               >
                 <Server className="h-3 w-3" />
                 <span>Consumet Direct</span>
-              </button>
-              <button
-                onClick={() => handleServerSelect('aniweeb')}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-bold text-xs transition-all ${
-                  activeServer === 'aniweeb'
-                    ? 'bg-brand-accent text-white shadow-glow-sm'
-                    : 'text-brand-muted hover:text-white'
-                }`}
-              >
-                <Tv className="h-3 w-3" />
-                <span>Aniweeb Embed</span>
               </button>
             </div>
           </div>
@@ -391,21 +374,21 @@ function WatchClientContent({ id }: WatchClientProps) {
               <p className="text-xs text-brand-muted max-w-md mb-4">{consumetErrorMsg}</p>
               <div className="flex items-center gap-3">
                 <button
+                  onClick={() => handleServerSelect('aniweeb')}
+                  className="flex items-center gap-2 rounded-xl bg-brand-accent px-4 py-2 text-xs font-bold text-white shadow-glow"
+                >
+                  <Tv className="h-4 w-4" />
+                  Switch to AniWeeb Server
+                </button>
+                <button
                   onClick={() => {
                     setConsumetErrorMsg(null);
                     activeReqIdRef.current++;
                   }}
-                  className="flex items-center gap-2 rounded-xl bg-brand-accent px-4 py-2 text-xs font-bold text-white shadow-glow"
+                  className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-xs font-bold text-white hover:border-brand-accent"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Retry Consumet
-                </button>
-                <button
-                  onClick={() => handleServerSelect('aniweeb')}
-                  className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-xs font-bold text-white hover:border-brand-accent"
-                >
-                  <Tv className="h-4 w-4" />
-                  Switch to AniWeeb
                 </button>
               </div>
             </div>
@@ -442,7 +425,7 @@ function WatchClientContent({ id }: WatchClientProps) {
               <Info className="h-10 w-10 text-brand-accent mb-3" />
               <h3 className="text-lg font-bold text-white mb-1">No Consumet Direct Stream</h3>
               <p className="text-xs text-brand-muted max-w-md mb-4">
-                No direct stream URL was returned for this episode. You can switch to the AniWeeb embed server.
+                No direct stream URL was returned for this episode. Switching to reliable AniWeeb server.
               </p>
               <button
                 onClick={() => handleServerSelect('aniweeb')}
@@ -454,7 +437,7 @@ function WatchClientContent({ id }: WatchClientProps) {
             </div>
           )
         ) : (
-          /* Aniweeb Embed */
+          /* Aniweeb Embed (DEFAULT RELIABLE SERVER) */
           !embedError ? (
             <iframe
               src={aniweebEmbedUrl}
@@ -469,7 +452,7 @@ function WatchClientContent({ id }: WatchClientProps) {
               <AlertTriangle className="h-10 w-10 text-amber-500 mb-3" />
               <h3 className="text-lg font-bold text-white mb-1">Playback Stream Error</h3>
               <p className="text-xs text-brand-muted max-w-md mb-4">
-                The external embed provider encountered an issue loading this episode. Try switching servers or audio tracks.
+                The embed provider encountered an issue loading this episode. Try refreshing or changing audio track (SUB/DUB).
               </p>
               <button
                 onClick={() => setEmbedError(false)}
@@ -491,7 +474,7 @@ function WatchClientContent({ id }: WatchClientProps) {
             <span className="text-brand-accent font-extrabold">• Episode {episodeNumber}</span>
           </h1>
           <p className="text-xs text-brand-muted mt-0.5">
-            Playing via {activeServer === 'consumet' ? 'Consumet Engine' : 'Aniweeb Embed'} ({track.toUpperCase()})
+            Playing via {activeServer === 'consumet' ? 'Consumet Direct' : 'Aniweeb Embed (Default)'} ({track.toUpperCase()})
           </p>
         </div>
 

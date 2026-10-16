@@ -56,7 +56,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
 }
 
 /**
- * Robustly fetch episodes across Consumet providers with error aggregation
+ * Fetch real episode listings across Consumet providers
  */
 export async function getConsumetEpisodesResult(anilistId: string): Promise<ConsumetEpisodesResult> {
   const errors: ProviderDiagnosticError[] = [];
@@ -71,22 +71,26 @@ export async function getConsumetEpisodesResult(anilistId: string): Promise<Cons
     );
 
     if (info && Array.isArray(info.episodes) && info.episodes.length > 0) {
-      const episodes: ConsumetEpisode[] = info.episodes.map((ep: any) => ({
-        id: String(ep.id || ep.number),
-        number: Number(ep.number || 1),
-        title: ep.title || `Episode ${ep.number}`,
-        image: ep.image,
-        description: ep.description,
-        url: ep.url,
-        provider: 'anilist',
-      }));
+      const episodes: ConsumetEpisode[] = info.episodes
+        .filter((ep: any) => ep && (ep.id || ep.number))
+        .map((ep: any) => ({
+          id: String(ep.id),
+          number: Number(ep.number || 1),
+          title: ep.title || `Episode ${ep.number}`,
+          image: ep.image,
+          description: ep.description,
+          url: ep.url,
+          provider: 'anilist',
+        }));
 
-      return {
-        success: true,
-        anilistId,
-        episodes,
-        errors: [],
-      };
+      if (episodes.length > 0) {
+        return {
+          success: true,
+          anilistId,
+          episodes,
+          errors: [],
+        };
+      }
     } else {
       errors.push({
         provider: 'META.Anilist',
@@ -136,21 +140,25 @@ export async function getConsumetEpisodesResult(anilistId: string): Promise<Cons
         );
 
         if (info && Array.isArray(info.episodes) && info.episodes.length > 0) {
-          const episodes: ConsumetEpisode[] = info.episodes.map((ep: any) => ({
-            id: String(ep.id),
-            number: Number(ep.number || 1),
-            title: ep.title || `Episode ${ep.number}`,
-            image: ep.image,
-            url: ep.url,
-            provider: 'hianime',
-          }));
+          const episodes: ConsumetEpisode[] = info.episodes
+            .filter((ep: any) => ep && ep.id)
+            .map((ep: any) => ({
+              id: String(ep.id),
+              number: Number(ep.number || 1),
+              title: ep.title || `Episode ${ep.number}`,
+              image: ep.image,
+              url: ep.url,
+              provider: 'hianime',
+            }));
 
-          return {
-            success: true,
-            anilistId,
-            episodes,
-            errors,
-          };
+          if (episodes.length > 0) {
+            return {
+              success: true,
+              anilistId,
+              episodes,
+              errors,
+            };
+          }
         }
       } else {
         errors.push({
@@ -211,11 +219,12 @@ export async function getConsumetEpisodesByTitle(title: string): Promise<Consume
 }
 
 /**
- * Extract streaming sources safely for a given episode ID and optional provider
+ * Extract streaming sources safely for a real episode ID, provider, and track option
  */
 export async function getConsumetSources(
   episodeId: string,
-  providerName?: string
+  providerName?: string,
+  track?: string
 ): Promise<ConsumetSourcesResult | null> {
   const targetProvider = providerName?.toLowerCase() || 'anilist';
 
