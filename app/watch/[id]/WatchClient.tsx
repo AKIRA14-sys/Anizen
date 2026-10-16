@@ -14,6 +14,7 @@ import {
   Tv,
   Download,
   Server,
+  Loader2,
 } from 'lucide-react';
 import { AnimeMedia, AniweebEpisodesResponse } from '@/types/anime';
 import { getAnimeById, getAnimeTitle } from '@/lib/anilist';
@@ -53,11 +54,12 @@ function WatchClientContent({ id }: WatchClientProps) {
   const [anime, setAnime] = useState<AnimeMedia | null>(null);
   const [track, setTrack] = useState<'sub' | 'dub'>('sub');
 
-  // 1. Aniweeb is the DEFAULT playback server (reliable)
+  // 1. Aniweeb is the DEFAULT reliable playback server
   const [activeServer, setActiveServer] = useState<'aniweeb' | 'consumet'>('aniweeb');
 
   // Episodes state
   const [consumetEpisodes, setConsumetEpisodes] = useState<any[]>([]);
+  const [consumetLoading, setConsumetLoading] = useState<boolean>(true);
   const [aniweebEpisodes, setAniweebEpisodes] = useState<AniweebEpisodesResponse | null>(null);
 
   // Consumet sources state
@@ -74,6 +76,7 @@ function WatchClientContent({ id }: WatchClientProps) {
   const [sourcesLoading, setSourcesLoading] = useState(false);
   const [consumetErrorMsg, setConsumetErrorMsg] = useState<string | null>(null);
   const [embedError, setEmbedError] = useState(false);
+  const [autoFallbackTimer, setAutoFallbackTimer] = useState<number | null>(null);
 
   // Request counter guard to prevent stale async responses
   const activeReqIdRef = useRef(0);
@@ -88,6 +91,24 @@ function WatchClientContent({ id }: WatchClientProps) {
       videoRef.current.pause();
       videoRef.current.removeAttribute('src');
       videoRef.current.load();
+    }
+  };
+
+  // Helper function to load background Consumet episode list
+  const loadConsumetEpisodeList = async () => {
+    setConsumetLoading(true);
+    try {
+      const res = await fetch(`/api/consumet/episodes/${animeId}`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.episodes)) {
+        setConsumetEpisodes(json.episodes);
+      } else {
+        setConsumetEpisodes([]);
+      }
+    } catch {
+      setConsumetEpisodes([]);
+    } finally {
+      setConsumetLoading(false);
     }
   };
 
@@ -109,14 +130,7 @@ function WatchClientContent({ id }: WatchClientProps) {
         setAniweebEpisodes(aniweebRes);
 
         // Fetch Consumet episodes in background
-        fetch(`/api/consumet/episodes/${animeId}`)
-          .then((res) => res.json())
-          .then((json) => {
-            if (json.success && Array.isArray(json.episodes)) {
-              setConsumetEpisodes(json.episodes);
-            }
-          })
-          .catch(() => {});
+        loadConsumetEpisodeList();
       } catch (e) {
         console.error('Error fetching initial anime watch data:', e);
       } finally {
@@ -127,8 +141,12 @@ function WatchClientContent({ id }: WatchClientProps) {
     loadWatchData();
   }, [animeId]);
 
-  // Handle server selection changes cleanly
+  // Clear auto fallback timer when switching servers
   const handleServerSelect = (server: 'aniweeb' | 'consumet') => {
+    if (autoFallbackTimer) {
+      clearTimeout(autoFallbackTimer);
+      setAutoFallbackTimer(null);
+    }
     setActiveServer(server);
     if (server === 'aniweeb') {
       cleanupVideoPlayer();
@@ -138,9 +156,23 @@ function WatchClientContent({ id }: WatchClientProps) {
     }
   };
 
-  // Fetch Consumet sources ONLY when activeServer is 'consumet' and a real episode ID exists
+  // Trigger auto-fallback to Aniweeb when Consumet fails
+  const triggerAutoFallback = (msg: string) => {
+    setConsumetErrorMsg(msg);
+    if (autoFallbackTimer) clearTimeout(autoFallbackTimer);
+
+    const timer = window.setTimeout(() => {
+      handleServerSelect('aniweeb');
+    }, 3000);
+
+    setAutoFallbackTimer(timer);
+  };
+
+  // Fetch Consumet sources ONLY when activeServer is 'consumet' and real episode ID exists
   useEffect(() => {
     if (isNaN(animeId) || activeServer !== 'consumet') return;
+
+    if (consumetLoading) return; // Wait until background Consumet fetch finishes
 
     const currentReqId = ++activeReqIdRef.current;
 
@@ -156,7 +188,7 @@ function WatchClientContent({ id }: WatchClientProps) {
 
       if (!matchedEp || !matchedEp.id) {
         if (currentReqId === activeReqIdRef.current) {
-          setConsumetErrorMsg(`Consumet has no indexed stream for Episode ${episodeNumber}.`);
+          triggerAutoFallback(`Consumet has no indexed stream for Episode ${episodeNumber}. Switching to Aniweeb Embed...`);
           setSourcesLoading(false);
         }
         return;
@@ -183,18 +215,18 @@ function WatchClientContent({ id }: WatchClientProps) {
           setSourcesLoading(false);
           return;
         } else {
-          setConsumetErrorMsg(json.message || 'No direct video sources returned for this episode.');
+          triggerAutoFallback(json.message || `No video stream returned for Episode ${episodeNumber}. Switching to Aniweeb Embed...`);
         }
       } catch (e: any) {
         if (currentReqId !== activeReqIdRef.current) return;
-        setConsumetErrorMsg(e?.message || 'Error connecting to Consumet streaming service.');
+        triggerAutoFallback('Error connecting to Consumet stream. Switching to Aniweeb Embed...');
       }
 
       setSourcesLoading(false);
     }
 
     fetchSources();
-  }, [animeId, episodeNumber, track, activeServer, consumetEpisodes]);
+  }, [animeId, episodeNumber, track, activeServer, consumetEpisodes, consumetLoading]);
 
   // Attach HLS stream or video source when selectedQualityUrl changes
   useEffect(() => {
@@ -218,7 +250,7 @@ function WatchClientContent({ id }: WatchClientProps) {
         hls.on(Hls.Events.ERROR, (_, data) => {
           if (data.fatal) {
             console.error('Fatal HLS error:', data.type);
-            setConsumetErrorMsg('Playback stream encountered a fatal error.');
+            triggerAutoFallback('Playback stream encountered an error. Switching to Aniweeb Embed...');
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -251,6 +283,12 @@ function WatchClientContent({ id }: WatchClientProps) {
         totalEpisodes: anime.episodes || undefined,
       });
     }
+  };
+
+  const handleRetryConsumet = () => {
+    if (autoFallbackTimer) clearTimeout(autoFallbackTimer);
+    setConsumetErrorMsg(null);
+    loadConsumetEpisodeList();
   };
 
   if (loading) {
@@ -327,7 +365,7 @@ function WatchClientContent({ id }: WatchClientProps) {
                 }`}
               >
                 <Server className="h-3 w-3" />
-                <span>Consumet Direct</span>
+                <span>Consumet Direct (Experimental)</span>
               </button>
             </div>
           </div>
@@ -362,29 +400,28 @@ function WatchClientContent({ id }: WatchClientProps) {
         className="relative aspect-video w-full overflow-hidden rounded-2xl border border-brand-border bg-black shadow-2xl group"
       >
         {activeServer === 'consumet' ? (
-          sourcesLoading ? (
+          consumetLoading || sourcesLoading ? (
             <div className="flex h-full w-full flex-col items-center justify-center p-6 text-brand-muted">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-accent border-t-transparent mb-3" />
-              <p className="text-xs font-semibold">Connecting to Consumet stream...</p>
+              <Loader2 className="h-10 w-10 animate-spin text-brand-accent mb-3" />
+              <p className="text-xs font-semibold">
+                {consumetLoading ? 'Checking Consumet servers...' : 'Connecting to Consumet stream...'}
+              </p>
             </div>
           ) : consumetErrorMsg ? (
             <div className="flex h-full w-full flex-col items-center justify-center p-6 text-center text-brand-muted">
               <AlertTriangle className="h-10 w-10 text-amber-500 mb-3" />
-              <h3 className="text-lg font-bold text-white mb-1">Consumet Stream Unavailable</h3>
+              <h3 className="text-lg font-bold text-white mb-1">Consumet Direct Unavailable</h3>
               <p className="text-xs text-brand-muted max-w-md mb-4">{consumetErrorMsg}</p>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => handleServerSelect('aniweeb')}
-                  className="flex items-center gap-2 rounded-xl bg-brand-accent px-4 py-2 text-xs font-bold text-white shadow-glow"
+                  className="flex items-center gap-2 rounded-xl bg-brand-accent px-4 py-2 text-xs font-bold text-white shadow-glow hover:bg-brand-accent-hover transition-all"
                 >
                   <Tv className="h-4 w-4" />
-                  Switch to AniWeeb Server
+                  Play on Aniweeb Embed
                 </button>
                 <button
-                  onClick={() => {
-                    setConsumetErrorMsg(null);
-                    activeReqIdRef.current++;
-                  }}
+                  onClick={handleRetryConsumet}
                   className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-surface px-4 py-2 text-xs font-bold text-white hover:border-brand-accent"
                 >
                   <RefreshCw className="h-4 w-4" />
@@ -425,14 +462,14 @@ function WatchClientContent({ id }: WatchClientProps) {
               <Info className="h-10 w-10 text-brand-accent mb-3" />
               <h3 className="text-lg font-bold text-white mb-1">No Consumet Direct Stream</h3>
               <p className="text-xs text-brand-muted max-w-md mb-4">
-                No direct stream URL was returned for this episode. Switching to reliable AniWeeb server.
+                No direct stream URL was returned for this episode. Switching to AniWeeb server.
               </p>
               <button
                 onClick={() => handleServerSelect('aniweeb')}
                 className="flex items-center gap-2 rounded-xl bg-brand-accent px-4 py-2 text-xs font-bold text-white shadow-glow"
               >
                 <Tv className="h-4 w-4" />
-                Switch to AniWeeb Server
+                Play on Aniweeb Embed
               </button>
             </div>
           )
@@ -474,7 +511,7 @@ function WatchClientContent({ id }: WatchClientProps) {
             <span className="text-brand-accent font-extrabold">• Episode {episodeNumber}</span>
           </h1>
           <p className="text-xs text-brand-muted mt-0.5">
-            Playing via {activeServer === 'consumet' ? 'Consumet Direct' : 'Aniweeb Embed (Default)'} ({track.toUpperCase()})
+            Playing via {activeServer === 'consumet' ? 'Consumet Direct (Experimental)' : 'Aniweeb Embed (Default)'} ({track.toUpperCase()})
           </p>
         </div>
 

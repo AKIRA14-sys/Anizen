@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       {
         success: false,
         sources: [],
-        message: 'Missing required episodeId parameter.',
+        message: 'Missing required real episodeId parameter.',
       },
       { status: 400 }
     );
