@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Compass, Calendar, Bookmark, Download } from 'lucide-react';
+import { Home, Compass, BookOpen, Calendar, Bookmark } from 'lucide-react';
 
 export default function BottomNav() {
   const pathname = usePathname();
@@ -11,6 +11,7 @@ export default function BottomNav() {
   const navItems = [
     { label: 'Home', href: '/', icon: Home },
     { label: 'Explore', href: '/explore', icon: Compass },
+    { label: 'Manga', href: '/manga', icon: BookOpen },
     { label: 'Schedule', href: '/schedule', icon: Calendar },
     { label: 'Watchlist', href: '/watchlist', icon: Bookmark },
   ];
@@ -34,7 +35,6 @@ export default function BottomNav() {
             </Link>
           );
         })}
-
       </div>
     </nav>
   );
