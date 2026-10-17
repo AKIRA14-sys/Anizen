@@ -1,4 +1,5 @@
 import HeroCarousel from '@/components/HeroCarousel';
+import AppDownloadBanner from '@/components/AppDownloadBanner';
 import ContinueWatchingRail from '@/components/ContinueWatchingRail';
 import AnimeRail from '@/components/AnimeRail';
 import GenreSection from '@/components/GenreSection';
@@ -56,6 +57,9 @@ export default async function HomePage() {
           </div>
         </div>
       ) : null}
+
+      {/* ANIZEN Android APK Download Section */}
+      <AppDownloadBanner />
 
       {/* Continue Watching Rail */}
       <ContinueWatchingRail />
